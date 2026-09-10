@@ -176,7 +176,7 @@ module emu
 );
 ///////// Default values for ports not used in this core /////////
 
-assign ADC_BUS  = 'Z;
+// ADC_BUS is driven by the cassette input below, and only while that is switched on.
 assign {UART_RTS, UART_DTR} = 0;
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = '0;  
@@ -224,6 +224,7 @@ parameter CONF_STR = {
 	"-;",
 	"OK,Input,Joypad,Mouse;",
 	"OL,Sound Board 2,Expansion,Onboard;",
+	"OM,Tape input,Off,ADC;",
 	"-;",
 	"R6,Reset;",
 	"J,Fire 1,Fire 2;",
@@ -383,6 +384,7 @@ wire	MTSAVE	=1;
 wire [1:0]FDsync=status[16:15];
 wire	cInDev	=status[20];
 wire	cSB2	=status[21];
+wire	tape_en	=status[22];
 
 assign CLK_VIDEO = clk_ram;
 assign AUDIO_S = 1;
@@ -391,6 +393,80 @@ wire disk_led;
 
 wire [7:0] red, green, blue;
 wire HSync, VSync, ce_pix, vid_de;
+
+//////////////////  CASSETTE (CMT) INPUT  ///////////////////
+
+// High impedance unless the cassette input is switched on.
+wire [3:0] adc_bus_int;
+assign ADC_BUS[3]     = tape_en ? adc_bus_int[3] : 1'bZ;   // SCK
+assign ADC_BUS[2]     = 1'bZ;                              // SDI, an input
+assign ADC_BUS[1]     = tape_en ? adc_bus_int[1] : 1'bZ;   // SDO
+assign ADC_BUS[0]     = tape_en ? adc_bus_int[0] : 1'bZ;   // CONVST
+assign adc_bus_int[2] = ADC_BUS[2];
+
+// The tape reaches the 8251 as an asynchronous serial line; only the tone is decoded here.
+localparam CLK_SYS_HZ = 20000000;
+
+wire       cmt_mton;
+wire [1:0] cmt_bs;
+
+// Port 30h is written in the CPU clock domain. Sample the bits twice before they are used.
+reg [2:0] cmt_port30_s1 = 0, cmt_port30_s = 0;
+always @(posedge clk_sys) begin
+	cmt_port30_s1 <= {cmt_mton, cmt_bs};
+	cmt_port30_s  <= cmt_port30_s1;
+end
+
+wire tape_motor = cmt_port30_s[2];      // 30h bit3
+wire tape_sel   = ~cmt_port30_s[1];     // 30h bit5: 0 selects the cassette, 1 RS-232C
+wire tape_1200  = cmt_port30_s[0];      // 30h bit4: 1 = 1200 baud, 0 = 600
+
+wire tape_on  = tape_en & tape_sel;
+wire tape_run = tape_on & tape_motor;
+
+// The USART clock follows the tape only while the motor is running.
+wire [1:0] cmt_clk_sel = tape_run ? (tape_1200 ? 2'b10 : 2'b01) : 2'b00;
+
+wire [11:0] adc_data;
+wire        adc_sync;
+reg         adc_sync_d = 0;
+always @(posedge clk_sys) adc_sync_d <= adc_sync;
+
+ltc2308 #(.NUM_CH(1), .ADC_RATE(192000), .CLK_RATE(CLK_SYS_HZ)) tape_adc
+(
+	.reset(~tape_en),
+	.clk(clk_sys),
+
+	.ADC_BUS(adc_bus_int),
+
+	.dout(adc_data),
+	.dout_sync(adc_sync)
+);
+
+wire tape_level;
+cmt_adc tape_slicer
+(
+	.clk(clk_sys),
+	.reset(~tape_en),
+
+	.sample(adc_sync_d ^ adc_sync),
+	.data(adc_data),
+
+	.level(tape_level)
+);
+
+wire tape_rxd;
+cmt_demod #(.CLK_HZ(CLK_SYS_HZ)) tape_demod
+(
+	.clk(clk_sys),
+	.reset(~tape_en),
+
+	.level(tape_level),
+	.rxd(tape_rxd)
+);
+
+// Idle high while the cassette input is selected.
+wire cmt_rxd = tape_run ? tape_rxd : (tape_on ? 1'b1 : 1'b0);
 
 PC88MiSTer PC88_top
 (
@@ -461,6 +537,11 @@ PC88MiSTer PC88_top
 
 	.pSndL(AUDIO_L),
 	.pSndR(AUDIO_R),
+
+	.cmt_mton(cmt_mton),
+	.cmt_bs(cmt_bs),
+	.cmt_clk_sel(cmt_clk_sel),
+	.pCOM_RxD(cmt_rxd),
 
 	.rstn(reset_n & ~reset)
 );
