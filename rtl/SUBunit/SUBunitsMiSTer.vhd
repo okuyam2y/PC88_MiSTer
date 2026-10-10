@@ -333,7 +333,7 @@ port(
 	usel	:out std_logic_vector(1 downto 0);
 	READY	:in std_logic;		--pin34
 	readyv	:in std_logic_vector(3 downto 0);
-	TWOSIDE	:in std_logic;
+	TWOSIDE	:in std_logic_vector(3 downto 0);
 	
 	int0	:in integer range 0 to maxbwidth;
 	int1	:in integer range 0 to maxbwidth;
@@ -695,7 +695,7 @@ signal	FDC_INDEXn	:std_logic;
 signal	FDC_SIDEn	:std_logic;
 signal	FDC_WPROTn	:std_logic;
 signal	FDC_MFM		:std_logic;
-signal	FDC_TWOSIDE	:std_logic;
+signal	FDC_INDISK	:std_logic_vector(1 downto 0);
 signal	FDC_READY	:std_logic;
 signal	FDE_EMUEN	:std_logic_vector(1 downto 0);
 signal	TDSEL		:std_logic;
@@ -899,7 +899,7 @@ port map(
 	usel	=>FD_USEL,
 	READY	=>FDC_READY,	-- The actual chip is active high, but here it's active low.
 	readyv	=>"1100",
-	TWOSIDE	=>FDC_TWOSIDE,
+	TWOSIDE	=>"00" & FDC_INDISK,
 	
 	int0	=>FD_int0,
 	int1	=>FD_int1,
@@ -923,7 +923,6 @@ port map(
 	rstns	=>CPUrstn
 );
 	FDC_READY<=		FD_USEL(1);
-	FDC_TWOSIDE<=	not FDC_READYn;
 
 	DSKE	:diskemu_mister generic map(
 		fclkfreq		=>sysclk,
@@ -956,7 +955,7 @@ port map(
 		fdc_siden	=>FDC_SIDEn,
 		fdc_wprotn	=>FDC_WPROTn,
 		fdc_eject	=>(others=>'0'),
-		fdc_indisk	=>open,
+		fdc_indisk	=>FDC_INDISK,
 		fdc_trackwid=>TDSEL,
 		fdc_dencity	=>RVSEL,
 		fdc_rpm		=>'0',
