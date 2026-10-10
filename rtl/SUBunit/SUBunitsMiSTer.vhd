@@ -673,7 +673,6 @@ signal	FD_USEL		:std_logic_vector(1 downto 0);
 signal	FD_hmssft	:std_logic;
 signal	FD_int0		:integer range 0 to (BR_300_D*sysclk/1000000);
 signal	FD_int1		:integer range 0 to (BR_300_D*sysclk/1000000);
-signal	FDC_READYn	:std_logic;
 signal	PPI_CSn		:std_logic;
 signal	PSEN		:std_logic;
 signal	FDC_BUSY	:std_logic;
@@ -944,7 +943,7 @@ port map(
 	--FDD
 		fdc_useln	=>FDC_USELn(1 downto 0),
 		fdc_motorn	=>FDC_MOTORn(1 downto 0),
-		fdc_readyn	=>FDC_READYn,
+		fdc_readyn	=>open,
 		fdc_wrenn	=>FDC_WRENn,
 		fdc_wrbitn	=>FDC_WRBITn,
 		fdc_rdbitn	=>FDC_RDBITn,
